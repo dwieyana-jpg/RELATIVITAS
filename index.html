@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Simulasi Jam Cahaya & Dilatasi Waktu</title>
+  <title>Simulasi Dilatasi Waktu & Kontraksi Panjang (Roket Realistis)</title>
   <style>
     :root {
       --bg-dark: #070b14;
@@ -15,6 +15,7 @@
       --accent-amber: #fbbf24;
       --accent-emerald: #34d399;
       --accent-rose: #fb7185;
+      --accent-violet: #a78bfa;
     }
 
     * {
@@ -48,14 +49,14 @@
     }
 
     header h1 {
-      font-size: 1.15rem;
+      font-size: 1.12rem;
       font-weight: 700;
       letter-spacing: 0.2px;
       color: #ffffff;
     }
 
     header p {
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       color: var(--text-muted);
       margin-top: 2px;
     }
@@ -97,6 +98,13 @@
       padding: 10px 12px;
     }
 
+    .stat-card.full-width {
+      grid-column: 1 / -1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
     .stat-label {
       font-size: 0.72rem;
       color: var(--text-muted);
@@ -104,7 +112,7 @@
     }
 
     .stat-value {
-      font-size: 1.05rem;
+      font-size: 1.02rem;
       font-weight: 700;
       font-variant-numeric: tabular-nums;
     }
@@ -113,6 +121,7 @@
     .val-amber { color: var(--accent-amber); }
     .val-emerald { color: var(--accent-emerald); }
     .val-rose { color: var(--accent-rose); }
+    .val-violet { color: var(--accent-violet); }
 
     .control-group {
       display: flex;
@@ -187,8 +196,8 @@
       border: 1px solid #1e293b;
       border-radius: 12px;
       padding: 10px 12px;
-      font-size: 0.8rem;
-      line-height: 1.5;
+      font-size: 0.79rem;
+      line-height: 1.55;
       color: #d1d5db;
     }
 
@@ -208,8 +217,8 @@
 <body>
   <div class="app-container">
     <header>
-      <h1>Jam Cahaya & Dilatasi Waktu</h1>
-      <p>Perbandingan kerangka diam (Bumi) vs roket (kecepatan v)</p>
+      <h1>Dilatasi Waktu & Kontraksi Panjang</h1>
+      <p>Jam cahaya + kontraksi panjang roket (L = L₀ / γ)</p>
     </header>
 
     <div class="panel">
@@ -235,6 +244,16 @@
         <div class="stat-label">Waktu Jam Roket (Δt₀)</div>
         <div class="stat-value val-rose" id="shipTimeVal">0.00 s</div>
       </div>
+      <div class="stat-card full-width">
+        <div>
+          <div class="stat-label">Panjang Roket Tampak (L) — Panjang Diam L₀ = 100 m</div>
+          <div class="stat-value val-violet" id="lengthVal">100.0 m</div>
+        </div>
+        <div style="text-align: right;">
+          <div class="stat-label">Rasio L / L₀</div>
+          <div class="stat-value val-violet" id="ratioVal">100%</div>
+        </div>
+      </div>
     </div>
 
     <div class="panel control-group">
@@ -258,8 +277,8 @@
     </div>
 
     <div class="panel formula-box">
-      <div class="formula-line">γ = 1 / √(1 − v²/c²)</div>
-      <div>Δt = γ · Δt₀ &nbsp;|&nbsp; Semakin besar v/c, detak jam roket tampak makin lambat bagi pengamat di Bumi.</div>
+      <div class="formula-line">γ = 1 / √(1 − v²/c²) &nbsp;|&nbsp; Δt = γ · Δt₀ &nbsp;|&nbsp; L = L₀ / γ</div>
+      <div>Panjang roket menyusut searah gerak (horizontal), sedangkan tinggi roket tetap.</div>
     </div>
 
     <footer>Simulasi Fisika SMA • Relativitas Khusus (HTML5 Canvas)</footer>
@@ -275,11 +294,16 @@
     const velVal = document.getElementById("velVal");
     const earthTimeVal = document.getElementById("earthTimeVal");
     const shipTimeVal = document.getElementById("shipTimeVal");
+    const lengthVal = document.getElementById("lengthVal");
+    const ratioVal = document.getElementById("ratioVal");
     const toggleBtn = document.getElementById("toggleBtn");
     const resetBtn = document.getElementById("resetBtn");
     const presetButtons = document.querySelectorAll(".preset-row button");
 
-    // Bintang latar belakang statis
+    const L0_METERS = 100;
+    const BASE_STAGE_WIDTH = 128; // Panjang badan utama saat v = 0 (px)
+    const BASE_CYCLE_RATE = 0.75;
+
     const stars = Array.from({ length: 48 }, (_, i) => ({
       x: ((i * 73) % 390) + 5,
       y: ((i * 137) % 490) + 5,
@@ -287,23 +311,15 @@
       alpha: 0.25 + ((i * 19) % 60) / 100
     }));
 
-    let beta = 0; // v / c
+    let beta = 0;
     let isRunning = true;
     let lastTimestamp = null;
 
-    // Waktu simulasi (dalam satuan detik skala tampilan)
     let earthTime = 0;
     let shipTime = 0;
-
-    // Fase osilasi foton (0..2 artinya 1 siklus penuh naik-turun)
     let earthPhase = 0;
     let shipPhase = 0;
-
-    // Posisi horizontal roket pada lintasan
     let shipX = 200;
-
-    // Kecepatan siklus dasar jam diam (siklus per detik)
-    const BASE_CYCLE_RATE = 0.75;
 
     function getGamma(vOverC) {
       const clamped = Math.min(Math.max(vOverC, 0), 0.995);
@@ -312,11 +328,16 @@
 
     function updateReadouts() {
       const gamma = getGamma(beta);
+      const contractedLength = L0_METERS / gamma;
+      const ratioPercent = (1 / gamma) * 100;
+
       sliderReadout.textContent = `${beta.toFixed(2)} c`;
       velVal.textContent = `${beta.toFixed(2)} c`;
       gammaVal.textContent = gamma.toFixed(3);
       earthTimeVal.textContent = `${earthTime.toFixed(2)} s`;
       shipTimeVal.textContent = `${shipTime.toFixed(2)} s`;
+      lengthVal.textContent = `${contractedLength.toFixed(1)} m`;
+      ratioVal.textContent = `${ratioPercent.toFixed(1)}%`;
 
       presetButtons.forEach((btn) => {
         const pVal = parseFloat(btn.dataset.vel);
@@ -369,7 +390,6 @@
         ctx.fill();
       });
 
-      // Garis pembatas bagian atas (Roket) dan bagian bawah (Bumi)
       ctx.strokeStyle = "#1e293b";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -379,13 +399,11 @@
     }
 
     function drawPhotonTriangle(xStart, xEnd, topY, botY, phase) {
-      // phase: 0 -> 1 naik (topY -> botY), 1 -> 2 turun (botY -> topY)
       const progress = phase % 2;
       const t = progress <= 1 ? progress : 2 - progress;
       const photonX = xStart + (xEnd - xStart) * (progress / 2);
       const photonY = topY + (botY - topY) * t;
 
-      // Jalur lintasan cahaya (putus-putus)
       ctx.save();
       ctx.setLineDash([4, 4]);
       ctx.strokeStyle = "rgba(251, 191, 36, 0.35)";
@@ -397,80 +415,182 @@
       ctx.stroke();
       ctx.restore();
 
-      // Foton bergerak
       ctx.fillStyle = "#fbbf24";
       ctx.beginPath();
       ctx.arc(photonX, photonY, 5.5, 0, Math.PI * 2);
       ctx.fill();
 
-      // Cahaya berpendar di sekitar foton
       ctx.fillStyle = "rgba(251, 191, 36, 0.22)";
       ctx.beginPath();
       ctx.arc(photonX, photonY, 12, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    function drawShipSection() {
-      ctx.fillStyle = "#94a3b8";
-      ctx.font = "bold 12px system-ui, sans-serif";
-      ctx.fillText("KERANGKA ROKET (Jam Bergerak)", 18, 26);
+    function drawRealisticRocket(gamma) {
+      // Dimensi horizontal menyusut sesuai L = L0 / gamma; dimensi vertikal tetap
+      const stageW = Math.max(22, BASE_STAGE_WIDTH / gamma);
+      const noseW = Math.max(12, 34 / gamma);
+      const finW = Math.max(8, 22 / gamma);
+      const nozzleW = Math.max(5, 10 / gamma);
 
-      // Badan roket sederhana
-      const bodyW = 136;
-      const bodyH = 156;
-      const leftX = shipX - bodyW / 2;
-      const topY = 52;
-      const botY = topY + bodyH;
+      const centerY = 132;
+      const halfH = 26; // Tinggi roket tetap
+      const topY = centerY - halfH;
+      const botY = centerY + halfH;
 
-      // Cermin atas & bawah jam cahaya di roket
-      ctx.fillStyle = "rgba(34, 211, 238, 0.12)";
-      ctx.fillRect(leftX + 12, topY + 12, bodyW - 24, bodyH - 24);
+      const totalW = stageW + noseW + nozzleW;
+      const tailX = shipX - totalW / 2;
+      const stageStartX = tailX + nozzleW;
+      const stageEndX = stageStartX + stageW;
+      const noseTipX = stageEndX + noseW;
 
-      ctx.strokeStyle = "#38bdf8";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(leftX + 12, topY + 12, bodyW - 24, bodyH - 24);
+      // Referensi panjang total diam (L0) di tengah atas
+      const refStageW = BASE_STAGE_WIDTH;
+      const refNoseW = 34;
+      const refNozzleW = 10;
+      const refTotalW = refStageW + refNoseW + refNozzleW;
+      const refLeft = 200 - refTotalW / 2;
 
-      // Pelat cermin atas & bawah
-      ctx.fillStyle = "#e0f2fe";
-      ctx.fillRect(leftX + 26, topY + 10, bodyW - 52, 5);
-      ctx.fillRect(leftX + 26, botY - 15, bodyW - 52, 5);
+      ctx.save();
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = "rgba(167, 139, 250, 0.42)";
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(refLeft, topY - 12, refTotalW, halfH * 2 + 24);
+      ctx.restore();
 
-      // Moncong roket di sisi kanan
-      ctx.fillStyle = "#fb7185";
+      ctx.fillStyle = "#a78bfa";
+      ctx.font = "10.5px system-ui, sans-serif";
+      ctx.fillText("Panjang diam L₀", refLeft, topY - 17);
+
+      // Semb嵌入/plume api pendorong di ekor roket saat v > 0
+      const flameLen = (8 + beta * 24) / Math.sqrt(gamma);
+      const flameGrad = ctx.createLinearGradient(tailX, centerY, tailX - flameLen, centerY);
+      flameGrad.addColorStop(0, "#ffffff");
+      flameGrad.addColorStop(0.35, "#fbbf24");
+      flameGrad.addColorStop(0.75, "#fb7185");
+      flameGrad.addColorStop(1, "rgba(251, 113, 133, 0)");
+
+      ctx.fillStyle = flameGrad;
       ctx.beginPath();
-      ctx.moveTo(leftX + bodyW, topY + 24);
-      ctx.lineTo(leftX + bodyW + 26, topY + bodyH / 2);
-      ctx.lineTo(leftX + bodyW, botY - 24);
+      ctx.moveTo(tailX, centerY - 11);
+      ctx.quadraticCurveTo(tailX - flameLen * 0.7, centerY - 14, tailX - flameLen, centerY);
+      ctx.quadraticCurveTo(tailX - flameLen * 0.7, centerY + 14, tailX, centerY + 11);
       ctx.closePath();
       ctx.fill();
 
-      // Foton di dalam jam cahaya roket
+      // Sirip ekor atas & bawah (menyusut searah sumbu X)
+      ctx.fillStyle = "#e11d48";
+      // Sirip atas
+      ctx.beginPath();
+      ctx.moveTo(stageStartX, topY + 2);
+      ctx.lineTo(stageStartX + finW, topY + 2);
+      ctx.lineTo(stageStartX, topY - 13);
+      ctx.closePath();
+      ctx.fill();
+
+      // Sirip bawah
+      ctx.beginPath();
+      ctx.moveTo(stageStartX, botY - 2);
+      ctx.lineTo(stageStartX + finW, botY - 2);
+      ctx.lineTo(stageStartX, botY + 13);
+      ctx.closePath();
+      ctx.fill();
+
+      // Nozel mesin roket
+      ctx.fillStyle = "#475569";
+      ctx.beginPath();
+      ctx.moveTo(stageStartX, centerY - 12);
+      ctx.lineTo(tailX, centerY - 15);
+      ctx.lineTo(tailX, centerY + 15);
+      ctx.lineTo(stageStartX, centerY + 12);
+      ctx.closePath();
+      ctx.fill();
+
+      // Badan utama silinder bergradasi metalik
+      const bodyGrad = ctx.createLinearGradient(0, topY, 0, botY);
+      bodyGrad.addColorStop(0, "#cbd5e1");
+      bodyGrad.addColorStop(0.45, "#f8fafc");
+      bodyGrad.addColorStop(1, "#64748b");
+
+      ctx.fillStyle = bodyGrad;
+      ctx.fillRect(stageStartX, topY, stageW, halfH * 2);
+
+      // Garis aksen merah pada badan roket
+      ctx.fillStyle = "#f43f5e";
+      ctx.fillRect(stageStartX + stageW * 0.12, topY, Math.max(3, stageW * 0.1), halfH * 2);
+
+      // Ruang transparan jam cahaya di bagian tengah badan roket
+      const clockInset = Math.max(4, stageW * 0.28);
+      const clockW = Math.max(8, stageW * 0.44);
+      const clockTop = topY + 7;
+      const clockBot = botY - 7;
+
+      ctx.fillStyle = "#081224";
+      ctx.fillRect(stageStartX + clockInset, clockTop, clockW, clockBot - clockTop);
+
+      ctx.strokeStyle = "#22d3ee";
+      ctx.lineWidth = 1.6;
+      ctx.strokeRect(stageStartX + clockInset, clockTop, clockW, clockBot - clockTop);
+
+      // Cermin atas & bawah jam cahaya
+      ctx.fillStyle = "#bae6fd";
+      ctx.fillRect(stageStartX + clockInset + 1, clockTop, Math.max(4, clockW - 2), 3);
+      ctx.fillRect(stageStartX + clockInset + 1, clockBot - 3, Math.max(4, clockW - 2), 3);
+
+      // Foton jam cahaya di dalam roket
       const pNorm = shipPhase % 2;
       const frac = pNorm <= 1 ? pNorm : 2 - pNorm;
-      const pY = (topY + 16) + ((botY - 16) - (topY + 16)) * frac;
+      const pY = (clockTop + 5) + ((clockBot - 5) - (clockTop + 5)) * frac;
+      const pX = stageStartX + clockInset + clockW / 2;
 
       ctx.fillStyle = "#fbbf24";
       ctx.beginPath();
-      ctx.arc(shipX, pY, 5.5, 0, Math.PI * 2);
+      ctx.arc(pX, pY, 4.2, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = "rgba(251, 191, 36, 0.25)";
+      // Kerucut hidung (nose cone) dengan jendela kokpit
+      const noseGrad = ctx.createLinearGradient(stageEndX, topY, noseTipX, botY);
+      noseGrad.addColorStop(0, "#f43f5e");
+      noseGrad.addColorStop(1, "#be123c");
+
+      ctx.fillStyle = noseGrad;
       ctx.beginPath();
-      ctx.arc(shipX, pY, 12, 0, Math.PI * 2);
+      ctx.moveTo(stageEndX, topY);
+      ctx.quadraticCurveTo(stageEndX + noseW * 0.72, topY + 3, noseTipX, centerY);
+      ctx.quadraticCurveTo(stageEndX + noseW * 0.72, botY - 3, stageEndX, botY);
+      ctx.closePath();
       ctx.fill();
 
-      // Label kecepatan di bawah roket
+      // Jendela kokpit bulat
+      const winR = Math.max(3.5, Math.min(7, noseW * 0.28));
+      const winX = stageEndX + noseW * 0.36;
+      ctx.fillStyle = "#38bdf8";
+      ctx.beginPath();
+      ctx.arc(winX, centerY - 2, winR, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "#e2e8f0";
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+
+    function drawShipSection(gamma) {
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = "bold 12px system-ui, sans-serif";
+      ctx.fillText("KERANGKA ROKET (Jam + Kontraksi L = L₀/γ)", 18, 26);
+
+      drawRealisticRocket(gamma);
+
       ctx.fillStyle = "#cbd5e1";
       ctx.font = "12px system-ui, sans-serif";
-      ctx.fillText(`v = ${beta.toFixed(2)} c`, 18, 240);
+      ctx.fillText(`v = ${beta.toFixed(2)} c  |  L = ${(L0_METERS / gamma).toFixed(1)} m`, 18, 240);
     }
 
     function drawEarthSection() {
       ctx.fillStyle = "#94a3b8";
       ctx.font = "bold 12px system-ui, sans-serif";
-      ctx.fillText("PENGAMAT BUMI (Jalur Cahaya dari Bumi)", 18, 280);
+      ctx.fillText("PENGAMAT BUMI (Lintasan Cahaya & Waktu)", 18, 280);
 
-      // Ilustrasi Bumi kecil di kiri bawah
       ctx.fillStyle = "#2563eb";
       ctx.beginPath();
       ctx.arc(46, 445, 22, 0, Math.PI * 2);
@@ -482,17 +602,14 @@
       ctx.arc(53, 450, 6, 0, Math.PI * 2);
       ctx.fill();
 
-      // Lintasan detak jam cahaya pada kerangka Bumi
       const topY = 305;
       const botY = 445;
 
-      // Cermin referensi statis
       ctx.fillStyle = "#94a3b8";
       ctx.fillRect(150, topY - 4, 160, 4);
       ctx.fillRect(150, botY, 160, 4);
 
       if (beta <= 0.001) {
-        // Saat v = 0, foton bergerak lurus vertikal
         const pNorm = earthPhase % 2;
         const frac = pNorm <= 1 ? pNorm : 2 - pNorm;
         const py = topY + (botY - topY) * frac;
@@ -510,7 +627,6 @@
         ctx.arc(230, py, 5.5, 0, Math.PI * 2);
         ctx.fill();
       } else {
-        // Saat v > 0, pengamat Bumi melihat lintasan diagonal (lebih panjang)
         drawPhotonTriangle(155, 305, topY, botY, earthPhase);
       }
 
@@ -528,23 +644,20 @@
 
       const gamma = getGamma(beta);
 
-      // Waktu pengamat Bumi berjalan dt; waktu jam di roket berjalan lebih lambat (dt / gamma)
       earthTime += dt;
       shipTime += dt / gamma;
 
-      // Update fase detak jam
       shipPhase += dt * BASE_CYCLE_RATE * 2;
       earthPhase += (dt / gamma) * BASE_CYCLE_RATE * 2;
 
-      // Gerakkan roket berulang melintasi layar sesuai kecepatan relatif
       const visualSpeed = 20 + beta * 240;
       shipX += visualSpeed * dt;
-      if (shipX > canvas.width + 85) {
-        shipX = -85;
+      if (shipX > canvas.width + 120) {
+        shipX = -120;
       }
 
       drawBackground();
-      drawShipSection();
+      drawShipSection(gamma);
       drawEarthSection();
       updateReadouts();
 
